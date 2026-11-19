@@ -105,6 +105,16 @@ def parse_param():
         param_dict['n_iter'] = n_pop*1000
         param_dict['n_burnin'] = n_pop*500
 
+    if param_dict['thin'] < 1:
+        print('* --thin must be a positive integer\n')
+        sys.exit(2)
+    elif param_dict['n_burnin'] < 0 or param_dict['n_iter'] <= param_dict['n_burnin']:
+        print('* --n_iter must be larger than --n_burnin (and --n_burnin non-negative)\n')
+        sys.exit(2)
+    elif param_dict['n_iter']//param_dict['thin'] - param_dict['n_burnin']//param_dict['thin'] < 1:
+        print('* No posterior draws would be retained: increase --n_iter or decrease --thin\n')
+        sys.exit(2)
+
     for key in param_dict:
         print('--%s=%s' % (key, param_dict[key]))
 
@@ -131,6 +141,9 @@ def main():
         elif os.path.isfile(param_dict['ref_dir'] + '/snpinfo_mult_ukbb_hm3'):
             ref = 'ukbb'
             ref_dict = parse_genet.parse_ref(param_dict['ref_dir'] + '/snpinfo_mult_ukbb_hm3', int(chrom), ref)
+        else:
+            print('* SNP information file not found: --ref_dir must contain snpinfo_mult_1kg_hm3 or snpinfo_mult_ukbb_hm3\n')
+            sys.exit(2)
 
         vld_dict = parse_genet.parse_bim(param_dict['bim_prefix'], int(chrom))
 

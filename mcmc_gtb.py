@@ -11,6 +11,10 @@ from scipy import linalg
 from numpy import random
 import gigrnd
 
+# consecutive numerical failures of the GIG sampler tolerated for one SNP before giving up
+# (failures are random and very rare; hitting this limit indicates a deterministic problem)
+MAX_GIG_RETRY = 1000
+
 
 def mcmc(a, b, phi, snp_dict, beta_mrg, frq_dict, idx_dict, n, ld_blk, blk_size, n_iter, n_burnin, thin, pop, chrom, out_dir, out_name, meta, write_pst, seed):
     print('... MCMC ...')
@@ -20,7 +24,10 @@ def mcmc(a, b, phi, snp_dict, beta_mrg, frq_dict, idx_dict, n, ld_blk, blk_size,
         random.seed(seed)
 
     # derived stats
-    n_pst = int((n_iter-n_burnin)/thin)
+    # number of retained draws = #{itr in (n_burnin, n_iter] : itr % thin == 0}. Identical to the
+    # previous int((n_iter-n_burnin)/thin) whenever n_burnin is a multiple of thin (e.g. the defaults);
+    # otherwise the old formula could undercount, mis-scaling the posterior mean and overflowing beta_pst.
+    n_pst = n_iter//thin - n_burnin//thin
     n_pop = len(pop)
     p_tot = len(snp_dict['SNP'])
 
@@ -101,10 +108,21 @@ def mcmc(a, b, phi, snp_dict, beta_mrg, frq_dict, idx_dict, n, ld_blk, blk_size,
             xx[idx_dict[pp]] += n[pp]*beta[pp]**2/sigma[pp]
 
         for jj in range(p_tot):
+            # pass true scalars ([jj,0], not the shape-(1,) slices [jj]): NumPy >= 2 refuses float() on
+            # 1-element 1-D arrays, which previously made gigrnd raise TypeError on every call.
+            n_fail = 0
             while True:
                 try:
-                    psi[jj] = gigrnd.gigrnd(a-0.5*n_grp[jj], 2.0*delta[jj], xx[jj])
-                except:
+                    psi[jj] = gigrnd.gigrnd(a-0.5*n_grp[jj,0], 2.0*delta[jj,0], xx[jj,0])
+                except (ArithmeticError, ValueError):
+                    # rare numerical failure inside the GIG sampler (overflow, division by zero,
+                    # math domain error): retry with fresh random numbers, as before. Any other
+                    # exception (e.g. TypeError, KeyboardInterrupt) now propagates instead of
+                    # being retried forever by a bare except.
+                    n_fail += 1
+                    if n_fail >= MAX_GIG_RETRY:
+                        raise RuntimeError('GIG sampling failed %d times in a row for SNP index %d '
+                                           '(p=%r, a=%r, b=%r)' % (n_fail, jj, a-0.5*n_grp[jj,0], 2.0*delta[jj,0], xx[jj,0]))
                     continue
                 else:
                     break
@@ -112,7 +130,9 @@ def mcmc(a, b, phi, snp_dict, beta_mrg, frq_dict, idx_dict, n, ld_blk, blk_size,
 
         if phi_updt == True:
             w = random.gamma(1.0, 1.0/(phi+1.0))
-            phi = random.gamma(p_tot*b+0.5, 1.0/(sum(delta)+w))
+            # builtin sum() over the (p,1) array returns a shape-(1,) array; .item() keeps phi a scalar
+            # (same value) so that it can be formatted/printed under NumPy >= 2.
+            phi = random.gamma(p_tot*b+0.5, 1.0/(sum(delta)+w)).item()
 
         # posterior
         if (itr > n_burnin) and (itr % thin == 0):
@@ -168,7 +188,7 @@ def mcmc(a, b, phi, snp_dict, beta_mrg, frq_dict, idx_dict, n, ld_blk, blk_size,
         a2_pp = [snp_dict['A2'][ii] for ii in idx_dict[pp]]
 
         with open(eff_file, 'w') as ff:
-            for snp, bp, a1, a2, beta in zip(snp_pp, bp_pp, a1_pp, a2_pp, beta_est[pp]):
+            for snp, bp, a1, a2, beta in zip(snp_pp, bp_pp, a1_pp, a2_pp, beta_est[pp][:,0]):
                 ff.write('%d\t%s\t%d\t%s\t%s\t%.6e\n' % (chrom, snp, bp, a1, a2, beta))
 
     if meta == 'TRUE':
@@ -182,7 +202,7 @@ def mcmc(a, b, phi, snp_dict, beta_mrg, frq_dict, idx_dict, n, ld_blk, blk_size,
                 for snp, bp, a1, a2, beta in zip(snp_dict['SNP'], snp_dict['BP'], snp_dict['A1'], snp_dict['A2'], mu_pst):
                     ff.write(('%d\t%s\t%d\t%s\t%s' + '\t%.6e'*n_pst + '\n') % (chrom, snp, bp, a1, a2, *beta))
             else:
-                for snp, bp, a1, a2, beta in zip(snp_dict['SNP'], snp_dict['BP'], snp_dict['A1'], snp_dict['A2'], mu):
+                for snp, bp, a1, a2, beta in zip(snp_dict['SNP'], snp_dict['BP'], snp_dict['A1'], snp_dict['A2'], mu[:,0]):
                     ff.write('%d\t%s\t%d\t%s\t%s\t%.6e\n' % (chrom, snp, bp, a1, a2, beta))
 
 

@@ -52,7 +52,10 @@ def parse_bim(bim_file, chrom):
     with open(bim_file + '.bim') as ff:
         for line in ff:
             ll = (line.strip()).split()
-            if int(ll[0]) == chrom:
+            # tolerate 'chr'-prefixed and non-numeric chromosome codes (X, Y, XY, MT, ...) in the bim:
+            # previously int('X') raised ValueError. Non-numeric codes can never match an autosome.
+            chr_code = ll[0][3:] if ll[0].lower().startswith('chr') else ll[0]
+            if chr_code.isdigit() and int(chr_code) == chrom:
                 vld_dict['SNP'].append(ll[1])
                 vld_dict['A1'].append(ll[4])
                 vld_dict['A2'].append(ll[5])
