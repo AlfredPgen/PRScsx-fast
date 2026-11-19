@@ -1,0 +1,27 @@
+{
+ "cmd": [
+  "/work/proj/.venv/bin/python",
+  "/work/proj/improved/PRScsx_improved.py",
+  "--ref_dir=/work/ref/1kg",
+  "--bim_prefix=/work/probe_chr22/target",
+  "--sst_file=/work/probe_chr22/EUR_sumstats.txt,/work/probe_chr22/EAS_sumstats.txt",
+  "--n_gwas=200000,100000",
+  "--pop=EUR,EAS",
+  "--chrom=22",
+  "--phi=1e-2",
+  "--seed=1",
+  "--out_name=probe",
+  "--out_dir=/work/scratch/speed_v2/full_t4",
+  "--threads=4",
+  "--linalg=full"
+ ],
+ "env_overrides": [
+  "OPENBLAS_NUM_THREADS=1"
+ ],
+ "exit_code": 0,
+ "timed_out": false,
+ "wall_s": 176.05898719299876,
+ "user_s": 592.017918,
+ "sys_s": 0.9731529999999999,
+ "max_rss_mb": 584.89453125
+}

@@ -102,3 +102,12 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+# fork additions
+*.nbi
+*.nbc
+demo_output/
+ldblk_1kg_*/
+ldblk_ukbb_*/
+snpinfo_mult_*_hm3
+*.tar.gz

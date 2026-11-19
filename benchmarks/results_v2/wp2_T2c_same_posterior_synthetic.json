@@ -1,0 +1,17 @@
+{
+ "panel": "synthetic",
+ "EUR": {
+  "mean_corr_full_full": 0.9823919465761877,
+  "mean_corr_full_lowrank": 0.9816257861391721,
+  "mean_corr_lowrank_lowrank": 0.9817911514481334,
+  "difference": 0.0007661604370156061,
+  "passed": true
+ },
+ "EAS": {
+  "mean_corr_full_full": 0.9785819403092961,
+  "mean_corr_full_lowrank": 0.9769968480900719,
+  "mean_corr_lowrank_lowrank": 0.97596022862094,
+  "difference": 0.0015850922192242045,
+  "passed": true
+ }
+}

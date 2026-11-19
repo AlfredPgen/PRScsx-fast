@@ -1,0 +1,22 @@
+{
+ "sizes": [
+  300,
+  1500,
+  4000
+ ],
+ "n_people": 600,
+ "snps_after_qc": 5800,
+ "build_seconds": 1.0053510665893555,
+ "max_abs_ld_error": 3.404993953459723e-08,
+ "ld_reproduced_to_1e5": true,
+ "mean_corr_dense_dense": 0.9004381072361785,
+ "mean_corr_dense_eigen": 0.8978070755400658,
+ "mean_corr_eigen_eigen": 0.8975179323544845,
+ "posterior_criterion_passed": true,
+ "seconds_per_fit": {
+  "dense": 121.60773634910583,
+  "eigen": 78.02642459869385
+ },
+ "n_iter": 1000,
+ "seeds": 5
+}

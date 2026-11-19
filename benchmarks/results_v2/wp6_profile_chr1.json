@@ -1,0 +1,20 @@
+{
+ "chrom": "1",
+ "pop": "EUR,EAS",
+ "linalg": "lowrank",
+ "runs": [
+  {
+   "threads": 4,
+   "n_iter": 200,
+   "wall_total_s": 222.44085534400028,
+   "mcmc_s": 83.33667847499964,
+   "kernel_s": 77.22857486299426,
+   "gig_s": 4.987482496999746,
+   "other_s": 1.1206211150056333,
+   "other_share": 0.013446913598096077,
+   "kernel_share": 0.9267056988137851,
+   "gig_share": 0.05984738758811886
+  }
+ ],
+ "rule": "prange only if other_share > 0.15"
+}

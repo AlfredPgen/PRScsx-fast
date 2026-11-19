@@ -1,0 +1,17 @@
+{
+ "panel": "real 1000 Genomes",
+ "EUR": {
+  "mean_corr_full_full": 0.9630358922808476,
+  "mean_corr_full_lowrank": 0.9645422847738031,
+  "mean_corr_lowrank_lowrank": 0.964522924203197,
+  "difference": -0.0015063924929554773,
+  "passed": true
+ },
+ "EAS": {
+  "mean_corr_full_full": 0.9356440226936442,
+  "mean_corr_full_lowrank": 0.9369779375922636,
+  "mean_corr_lowrank_lowrank": 0.9351047373325161,
+  "difference": -0.0013339148986193372,
+  "passed": true
+ }
+}

@@ -1,0 +1,143 @@
+From d32d6d333e668972dfcfb3d334ed122fdbf64d48 Mon Sep 17 00:00:00 2001
+From: prscsx-fix <fix@local>
+Date: Wed, 18 Nov 2026 09:37:27 +0000
+Subject: [PATCH] Fix NumPy>=2 hang (array->scalar conversions), narrow bare
+ except, fix n_pst draw count, clearer errors, tolerate non-numeric bim
+ chromosome codes
+
+---
+ PRScsx.py      | 13 +++++++++++++
+ mcmc_gtb.py    | 32 ++++++++++++++++++++++++++------
+ parse_genet.py |  5 ++++-
+ 3 files changed, 43 insertions(+), 7 deletions(-)
+
+diff --git a/PRScsx.py b/PRScsx.py
+index 7dbafd2..3a86d3f 100755
+--- a/PRScsx.py
++++ b/PRScsx.py
+@@ -105,6 +105,16 @@ def parse_param():
+         param_dict['n_iter'] = n_pop*1000
+         param_dict['n_burnin'] = n_pop*500
+ 
++    if param_dict['thin'] < 1:
++        print('* --thin must be a positive integer\n')
++        sys.exit(2)
++    elif param_dict['n_burnin'] < 0 or param_dict['n_iter'] <= param_dict['n_burnin']:
++        print('* --n_iter must be larger than --n_burnin (and --n_burnin non-negative)\n')
++        sys.exit(2)
++    elif param_dict['n_iter']//param_dict['thin'] - param_dict['n_burnin']//param_dict['thin'] < 1:
++        print('* No posterior draws would be retained: increase --n_iter or decrease --thin\n')
++        sys.exit(2)
++
+     for key in param_dict:
+         print('--%s=%s' % (key, param_dict[key]))
+ 
+@@ -131,6 +141,9 @@ def main():
+         elif os.path.isfile(param_dict['ref_dir'] + '/snpinfo_mult_ukbb_hm3'):
+             ref = 'ukbb'
+             ref_dict = parse_genet.parse_ref(param_dict['ref_dir'] + '/snpinfo_mult_ukbb_hm3', int(chrom), ref)
++        else:
++            print('* SNP information file not found: --ref_dir must contain snpinfo_mult_1kg_hm3 or snpinfo_mult_ukbb_hm3\n')
++            sys.exit(2)
+ 
+         vld_dict = parse_genet.parse_bim(param_dict['bim_prefix'], int(chrom))
+ 
+diff --git a/mcmc_gtb.py b/mcmc_gtb.py
+index dd444f4..ee10a4b 100644
+--- a/mcmc_gtb.py
++++ b/mcmc_gtb.py
+@@ -11,6 +11,10 @@ from scipy import linalg
+ from numpy import random
+ import gigrnd
+ 
++# consecutive numerical failures of the GIG sampler tolerated for one SNP before giving up
++# (failures are random and very rare; hitting this limit indicates a deterministic problem)
++MAX_GIG_RETRY = 1000
++
+ 
+ def mcmc(a, b, phi, snp_dict, beta_mrg, frq_dict, idx_dict, n, ld_blk, blk_size, n_iter, n_burnin, thin, pop, chrom, out_dir, out_name, meta, write_pst, seed):
+     print('... MCMC ...')
+@@ -20,7 +24,10 @@ def mcmc(a, b, phi, snp_dict, beta_mrg, frq_dict, idx_dict, n, ld_blk, blk_size,
+         random.seed(seed)
+ 
+     # derived stats
+-    n_pst = int((n_iter-n_burnin)/thin)
++    # number of retained draws = #{itr in (n_burnin, n_iter] : itr % thin == 0}. Identical to the
++    # previous int((n_iter-n_burnin)/thin) whenever n_burnin is a multiple of thin (e.g. the defaults);
++    # otherwise the old formula could undercount, mis-scaling the posterior mean and overflowing beta_pst.
++    n_pst = n_iter//thin - n_burnin//thin
+     n_pop = len(pop)
+     p_tot = len(snp_dict['SNP'])
+ 
+@@ -101,10 +108,21 @@ def mcmc(a, b, phi, snp_dict, beta_mrg, frq_dict, idx_dict, n, ld_blk, blk_size,
+             xx[idx_dict[pp]] += n[pp]*beta[pp]**2/sigma[pp]
+ 
+         for jj in range(p_tot):
++            # pass true scalars ([jj,0], not the shape-(1,) slices [jj]): NumPy >= 2 refuses float() on
++            # 1-element 1-D arrays, which previously made gigrnd raise TypeError on every call.
++            n_fail = 0
+             while True:
+                 try:
+-                    psi[jj] = gigrnd.gigrnd(a-0.5*n_grp[jj], 2.0*delta[jj], xx[jj])
+-                except:
++                    psi[jj] = gigrnd.gigrnd(a-0.5*n_grp[jj,0], 2.0*delta[jj,0], xx[jj,0])
++                except (ArithmeticError, ValueError):
++                    # rare numerical failure inside the GIG sampler (overflow, division by zero,
++                    # math domain error): retry with fresh random numbers, as before. Any other
++                    # exception (e.g. TypeError, KeyboardInterrupt) now propagates instead of
++                    # being retried forever by a bare except.
++                    n_fail += 1
++                    if n_fail >= MAX_GIG_RETRY:
++                        raise RuntimeError('GIG sampling failed %d times in a row for SNP index %d '
++                                           '(p=%r, a=%r, b=%r)' % (n_fail, jj, a-0.5*n_grp[jj,0], 2.0*delta[jj,0], xx[jj,0]))
+                     continue
+                 else:
+                     break
+@@ -112,7 +130,9 @@ def mcmc(a, b, phi, snp_dict, beta_mrg, frq_dict, idx_dict, n, ld_blk, blk_size,
+ 
+         if phi_updt == True:
+             w = random.gamma(1.0, 1.0/(phi+1.0))
+-            phi = random.gamma(p_tot*b+0.5, 1.0/(sum(delta)+w))
++            # builtin sum() over the (p,1) array returns a shape-(1,) array; .item() keeps phi a scalar
++            # (same value) so that it can be formatted/printed under NumPy >= 2.
++            phi = random.gamma(p_tot*b+0.5, 1.0/(sum(delta)+w)).item()
+ 
+         # posterior
+         if (itr > n_burnin) and (itr % thin == 0):
+@@ -168,7 +188,7 @@ def mcmc(a, b, phi, snp_dict, beta_mrg, frq_dict, idx_dict, n, ld_blk, blk_size,
+         a2_pp = [snp_dict['A2'][ii] for ii in idx_dict[pp]]
+ 
+         with open(eff_file, 'w') as ff:
+-            for snp, bp, a1, a2, beta in zip(snp_pp, bp_pp, a1_pp, a2_pp, beta_est[pp]):
++            for snp, bp, a1, a2, beta in zip(snp_pp, bp_pp, a1_pp, a2_pp, beta_est[pp][:,0]):
+                 ff.write('%d\t%s\t%d\t%s\t%s\t%.6e\n' % (chrom, snp, bp, a1, a2, beta))
+ 
+     if meta == 'TRUE':
+@@ -182,7 +202,7 @@ def mcmc(a, b, phi, snp_dict, beta_mrg, frq_dict, idx_dict, n, ld_blk, blk_size,
+                 for snp, bp, a1, a2, beta in zip(snp_dict['SNP'], snp_dict['BP'], snp_dict['A1'], snp_dict['A2'], mu_pst):
+                     ff.write(('%d\t%s\t%d\t%s\t%s' + '\t%.6e'*n_pst + '\n') % (chrom, snp, bp, a1, a2, *beta))
+             else:
+-                for snp, bp, a1, a2, beta in zip(snp_dict['SNP'], snp_dict['BP'], snp_dict['A1'], snp_dict['A2'], mu):
++                for snp, bp, a1, a2, beta in zip(snp_dict['SNP'], snp_dict['BP'], snp_dict['A1'], snp_dict['A2'], mu[:,0]):
+                     ff.write('%d\t%s\t%d\t%s\t%s\t%.6e\n' % (chrom, snp, bp, a1, a2, beta))
+ 
+ 
+diff --git a/parse_genet.py b/parse_genet.py
+index 26b3dbb..9c5f1ce 100644
+--- a/parse_genet.py
++++ b/parse_genet.py
+@@ -52,7 +52,10 @@ def parse_bim(bim_file, chrom):
+     with open(bim_file + '.bim') as ff:
+         for line in ff:
+             ll = (line.strip()).split()
+-            if int(ll[0]) == chrom:
++            # tolerate 'chr'-prefixed and non-numeric chromosome codes (X, Y, XY, MT, ...) in the bim:
++            # previously int('X') raised ValueError. Non-numeric codes can never match an autosome.
++            chr_code = ll[0][3:] if ll[0].lower().startswith('chr') else ll[0]
++            if chr_code.isdigit() and int(chr_code) == chrom:
+                 vld_dict['SNP'].append(ll[1])
+                 vld_dict['A1'].append(ll[4])
+                 vld_dict['A2'].append(ll[5])
+-- 
+2.43.0
+
